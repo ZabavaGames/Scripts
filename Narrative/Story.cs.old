@@ -1,0 +1,362 @@
+﻿using UnityEngine;
+using System;
+using System.Collections.Generic;
+
+
+namespace JagaJaga
+{
+
+// основной объект для выполнения сюжета; здесь задаем условия событий и квестов и пишем диалоги;
+// выполняем диалоги и вызов форм через класс дисплей, который зачем-то сделал производным от этого, ну да ладно...
+// нужен отдельный класс диалога (сделано)
+
+public class Story : MonoBehaviour {
+
+	public State Strana;
+	public Display Output;
+//	public Database Info;
+	private int Weeks;
+	private bool FirstRun;
+
+	private Sequence Sujet; 
+	private TextArray Massive;
+	private int ReplikaChoiceFlag;
+
+
+	void Start () {
+			Weeks = ReplikaChoiceFlag = 0;	FirstRun = true;
+			Output = GameObject.Find ("Output").GetComponent<Display>();
+			Strana = GameObject.Find ("Kentabriya").GetComponent<State>();
+//			Database = GameObject.Find ("GameData").GetComponent<Database>();
+			Sujet = new Sequence ();
+			Massive = new TextArray ();
+		}
+
+
+	// здесь стартуем; управление передается из 1-го блока флоучарта
+	public void main () {
+Debug.Log ("Пошла жара!");	
+		Output.DisplayClear ();
+		PrepareStory ();  // инициализируем сюжетку
+		ShowMain ();
+	//	Output.RunFlow ("ShowMain");
+	//  и то и другое работает, можно вызывать отдельные блоки из флоучарта, которые через invoke method
+	//  вызывают публичные функции, или делают что-то еще, например, реагируют на кнопки или меняют вью
+		}
+
+
+	public virtual void StoryRun (bool timerun) {  // вызывается из формы через переопр. ф-ию
+
+// всякие проверки, потом вызываем рассказчика сюжета с подборкой эпизодов
+		PrepareStory ();
+
+		Storyteller ( () => { 
+			WeeklyUpdate (); 
+			main (); 
+			});
+// потом всякие действия по перемотке времени - апдейт страны и т.д.
+// чистим и обновляем историю		
+	}
+
+
+	private void WeeklyUpdate () {
+		Weeks += 1; 
+		if (q4(Weeks))
+			Strana.MonthlyUpdate ();
+	// здесь всякие разные апдейты ситуаций, заданий и прочего
+		}
+
+	public int WeeksNumber () {
+			return Weeks;
+	}
+
+	private bool q4 (int x) {
+		if (x % 4 == 0) return true;
+		else return false;
+	}
+
+
+	private void ShowMain() {
+		ShowForm (FormList.Main_Form, 0); 
+	}
+
+	private void ShowCounsil () {
+		// там надо нариосвать форму с мордами, и по щелчку на морду вызывать окно перса,
+		// например так: Output.PersonInfo (Strana.Government.PrimeMinister.Holder);
+		// сейчас морды есть, но не щелкаются
+		ShowForm (FormList.Counsil_Form, 0);
+	}
+
+
+//     ПЕРЕОПРЕДЕЛЕННЫЕ ФУНКЦИИ
+//
+// вызывает список персон при дворе, который можно листать и просматривать отдельные морды
+	public virtual bool CourtList (int choice) {
+			return Output.CourtList (choice);  // хотя можно и без значения обойтись
+	}
+
+	// показать список всех людей на должностях
+	public virtual bool CourtPostList (int choice) {
+			return Output.CourtPostList (choice);
+	}
+
+	// показать список должностей
+	public virtual bool PostsList (int choice) {
+			return Output.PostsList (choice);
+	}
+
+	// показать все должности в подчинении определенного поста
+	public virtual bool BranchList (int choice, string titul) {
+			return Output.BranchList (choice, titul);
+	}
+	
+	// показать отдельного персонажа
+	public virtual Person ShowPerson (Person P, int choice, bool value) {
+			return Output.ShowPerson (P, choice, value);
+	}
+
+	public virtual Person CallShowPerson (int choice, bool value) {
+			return Output.CallShowPerson (choice, value);
+	}
+
+	public virtual bool ShowForm (FormList form, int choice) {
+// запарился, короче, вызываем общую форму
+			return Output.ShowForm (form, choice);
+	}
+
+	public virtual bool ShowActiveForm (int choice) {
+			return Output.ShowActiveForm (choice);
+	}
+
+	public virtual int GetActiveForm () {
+			return Output.GetActiveForm ();
+	}
+
+
+
+/***********************************************************************
+					С Ю Ж Е Т
+***********************************************************************/
+
+
+// здесь формируем список диалогов для текущей сессии и запускаем цепочку исполнения
+	private void Storyteller (Action onComplete) {
+			SubStory sub1;	
+			Dialogue dial1; 
+			List<Dialogue> dialist = new List<Dialogue>();
+	// в цикле перебираем сюжетные линии
+			for (int i = 0; i < Sujet.count; i++) {
+				if ((sub1 = Sujet.Seq_GetOne (i)) != null) {
+					if ((dial1 = sub1.Sub_NextDialogue ()) != null) {
+						dialist.Add (dial1);
+						}
+					}
+				}
+			Output.SetScene (); // пока пустая
+
+			DialogueRoutine (dialist, onComplete);
+	}
+
+// рекурсивная ф-ия запуска цепочки диалогов с финишем одного за другим (как стек)
+	private void DialogueRoutine (List<Dialogue> dialist, Action onComplete) {
+		Dialogue d;
+		if (dialist.Count > 0) {
+				if ((d = dialist[0]) != null) {
+					dialist.RemoveAt(0);
+					DialogueRoutine (dialist, () => { StartDialogue (d, onComplete); });
+				}
+		}
+		else 
+			FinishDialogue (onComplete); // первый в цепочке стартует без задержки
+	}
+
+// все, что касается показа диалога, кроме этой ф-ии, передать в дисплей
+	public virtual void StartDialogue (Dialogue d, Action onComplete) {
+			Output.StartDialogue (d, onComplete);
+	}
+
+	public virtual void Talk (Person Pers, string text) {
+			Output.Talk (Pers, text);
+	}
+
+	public virtual void FinishDialogue (Action onComplete) {
+			Output.FinishDialogue (onComplete);
+	}
+
+
+	// создаем диалог с линейным обменом репликами, без вопросов
+	private Dialogue PrepDialog (Person p1, Person p2, string[] s) {
+			Dialogue d = new Dialogue ();
+			Phrase ph;
+			d.D_Init (p1, p2);
+			for (int i = 0; i < s.Length; i++) {
+				ph = new Phrase ();
+				ph.Ph_Init (() => { CombinedReplikaChoice (p2); }, p2, s[i], false, false, null);
+				d.D_AddPhrase (ph);
+				}
+			return d;
+	}
+
+	// или создаем диалог с набором фраз, у каждой из которых свой набор строк 
+	private Dialogue PrepDialog (Person p1, Person p2, List<string[]> list, int[][] links, int[] answers, int[] endings) {
+			Dialogue d = new Dialogue ();
+			Phrase ph;
+			d.D_Init (p1, p2);
+			for (int i = 0; i < list.Count; i++) {
+				ph = new Phrase ();
+				ph.Ph_Init (() => { CombinedReplikaChoice (p2); }, p2, list[i], false, false, null);
+				d.D_AddPhrase (ph);
+				}
+
+			d.D_Settings (links, answers, endings);
+
+			return d;
+	}
+
+	
+	// делаем простую линейную последовательность диалогов
+	private SubStory PrepSubStory (Dialogue[] d, bool isReady) {
+			SubStory sub = new SubStory ();
+			sub.Sub_Init (null);
+			sub.Sub_Set (null);
+			for (int i=0; i<d.Length; i++)
+				sub.Sub_AddDialogue (d[i]);
+			sub.isReady = isReady;
+			Sujet.Seq_Add (sub);
+			return sub;
+	}
+
+	// алгоритм выбора реплики в зав-ти от характера и настроения субъекта
+	// передается как условие в класс phrase, нужен флаг ReplikaChoiceFlag
+	public void CombinedReplikaChoice (Person Pers) {
+			var pr = Pers.Relation;
+			var pk = Pers.Kharakter;
+			int flag = 0;
+			if (pk == Kharakter.Gentle) {
+				if (pr > 0)
+					flag = 0;
+				else 
+					flag = 1;
+				}
+			if (pk == Kharakter.Average) {
+				if (pr > 50)
+					flag = 0;
+				else if (pr > -50)
+					flag = 1;
+				else 
+					flag = 2;
+				}
+			if (pk == Kharakter.Rude) {
+				if (pr > 0)
+					flag = 1;
+				else 
+					flag = 2;
+				}
+			ReplikaChoiceFlag = flag;
+	}
+
+	public int GetReplikaFlag () {
+		return ReplikaChoiceFlag;
+	}
+
+
+	// здесь создаем каркас сюжета, закладываем новые сторилайны с ветками диалогов и проч.
+	// возможно, стоит вынести в отдельный класс
+	// диалоги имеет смысл хранить в файлах и динамически считывать, чтобы экономить память
+	private void PrepareStory () {
+		if (FirstRun) {
+			// инициализируем сюжетку
+			FirstRun = false;
+			}
+		PrepareAudience ();  // пока в стадии теста
+	}
+
+
+	private void TestStory () {
+	// пока тестовый разговор 1
+			Person MainHero = Strana.Dvor.GetPerson (0);
+			Person Boltun = Strana.Dvor.GetPerson (33); // случайно
+			string[] s1 = {
+				"Кто здесь?",
+				"Это я, Болтун!",
+				"Болтун, как я рад тебя видеть!",
+				"А уж я-то!",
+				};
+			Dialogue[] d1 = { PrepDialog (MainHero, Boltun, s1) };
+			PrepSubStory (d1, true);
+
+	// пока тестовый разговор 2
+			MainHero = Strana.Dvor.GetPerson (0);
+			Boltun = Strana.Dvor.GetPerson (35); // случайно
+			string[] s2 = {
+				"Мы ехали, ехали, и наконец приехали!",
+				"Ура товарищу рекурсиву!",
+				"Гип-гип-ура!"
+				};
+			Dialogue[] d2 = { PrepDialog (MainHero, Boltun, s2) };
+			PrepSubStory (d2, true);
+
+	// пока тестовый разговор 3
+			MainHero = Strana.Dvor.GetPerson (0);
+			Boltun = Strana.Dvor.GetPerson (36); // случайно
+			string[] s3 = {
+				"А вот и еще один разговорчик!",
+				"Смело товарищи в ногу!",
+				"Трам-пам-пам!"
+				};
+			Dialogue[] d3 = { PrepDialog (MainHero, Boltun, s3) };
+			PrepSubStory (d3, true);
+
+	}
+
+	private void PrepareAudience () {	
+// каким образом мы создаем историю?
+// сначала формируем список реплик на основе строковых массивов из TextArray (переменная Massive)
+// их мы будем считывать из файла, в зависимости от версии языка... возможно (уже сделал :-))
+// потом формируем матрицы переходов от реплики к реплике - "маршрут" диалога, а также 2 списка -
+// номера вопросников и номера концовок
+// с помощью всего этого инициализируем диалог, или последовательность диалогов
+// потом отдельно вписываем в реплики связанные концовки (изменение отношений, арест, повышение и т.д.)
+// таким же образом можно прописать условия выбора реплики, если оно отличается от стандартного 
+// сформировав таким образом цепочку диалогов, добавляем сабстори, из которых складывается массив сюжета
+
+		Person Guest;
+		Dialogue[] Audience1 = new Dialogue[1];	
+		List<string[]> list = Massive.GetDialogStrings (Dialog_Names.Audience);
+		int[][] links = { new int[] {1,1,2}, new int[] {1,2,3}, new int[] {1,3,4}, new int[] {1,4,4}, 
+						  new int[] {1,5,5}, new int[] {1,6,32}, new int[] {1,7,7}, new int[] {1,8,8},
+ 						  new int[] {9,1,10}, new int[] {9,2,11}, new int[] {9,3,12}, new int[] {9,4,13},
+ 						  new int[] {9,5,15}, new int[] {9,6,16}, new int[] {9,7,17}, new int[] {9,8,27},
+ 						  new int[] {13,0,14}, new int[] {18,1,19}, new int[] {18,2,19}, new int[] {18,3,19},
+ 						  new int[] {18,4,19}, new int[] {18,5,19}, new int[] {18,6,19}, new int[] {18,7,27},
+ 						  new int[] {22,1,23}, new int[] {22,2,23}, new int[] {22,3,27}, new int[] {24,1,25},
+						  new int[] {24,2,25}, new int[] {24,3,25}, new int[] {24,4,25}, new int[] {24,5,27},
+						  new int[] {27,1,1}, new int[] {27,2,28}, new int[] {2,0,9}, new int[] {3,0,18}, 
+						  new int[] {4,0,27}, new int[] {5,0,27}, new int[] {6,0,27}, new int[] {7,0,24}, 
+						  new int[] {10,0,9}, new int[] {11,0,9}, new int[] {12,0,9}, new int[] {14,0,9}, 
+						  new int[] {15,0,9}, new int[] {16,0,9}, new int[] {17,0,9}, new int[] {19,0,27}, 
+						  new int[] {20,0,27}, new int[] {23,0,27}, new int[] {25,0,27}, new int[] {26,0,27},
+						  new int[] {21,5,31}, new int[] {21,1,29}, new int[] {21,2,29}, new int[] {21,3,29}, 
+						  new int[] {21,4,29}, new int[] {29,0,27}, new int[] {30,0,27}, new int[] {31,0,27}, 
+						  new int[] {32,0,21} 
+
+ 						};
+		int[] answers = new int[] { 1, 9, 18, 21, 22, 24, 27 }, 
+			   finals = new int[] { 8, 28 };
+
+		for (int i=0; i < Strana.Dvor.CourtSize; i++) {
+			Guest = Strana.Dvor.GetPerson (i);
+			if (Guest.isInvited) {
+				Audience1[0] = PrepDialog (Strana.Ruler, Guest, list, links, answers, finals);
+				Audience1[0].D_GetPhrase (8).Ph_InitAct (null, () => { Debug.Log("Эtо конееееец!!!"); } );
+				Audience1[0].D_GetPhrase (28).Ph_InitAct (null, () => { Debug.Log("Эtо конееееец!!!"); } );
+			
+				PrepSubStory (Audience1, true);
+				}
+			}
+	}
+
+
+
+}
+}
